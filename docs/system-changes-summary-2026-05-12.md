@@ -7,6 +7,7 @@
 - 建立了本地 Qwen3-ASR-GGUF 语音输入方案。
 - 将语音听写按键监听和护眼模式按键监听合并为一个用户级服务。
 - 统一服务名称：`custom-key-daemon.service`。
+- 新增可选 fcitx5 addon 输出路径，用于把转写文本提交到当前输入法上下文。
 - 旧的单独语音输入服务和旧的护眼监听服务保留为 legacy，但默认停用。
 - 新增了按键调试脚本和运维文档。
 
@@ -30,6 +31,7 @@ config/config.json
 scripts/run.sh
 scripts/key-listener.py
 systemd/user/custom-key-daemon.service
+contrib/fcitx5-qwen-voice/
 legacy/systemd/user/qwen-voice-input.service
 legacy/systemd/user/eye-key-listener.service
 docs/
@@ -71,6 +73,10 @@ journalctl --user -u custom-key-daemon.service -f
     "asr_project_dir": "<ASR_PROJECT>",
     "model_dir": "<MODEL_DIR>",
     "type_command": "wtype",
+    "output": {
+      "backend": "fcitx5",
+      "fallback": "wtype"
+    },
     "copy_to_clipboard": false,
     "notify": true
   }
@@ -130,12 +136,14 @@ exec <VENV>/bin/python3 src/custom_key_daemon.py "$@"
 
 - 默认关闭剪贴板复制，避免 `wl-copy` 超时影响 `wtype` 上屏。
 - 通过设备名解析 event，避免重启后 `/dev/input/eventN` 漂移。
+- fcitx5 addon 只负责 `CommitText`，录音、ASR 和按键监听仍保留在 Python daemon。
 - 旧服务保留在 `legacy/` 下用于回退参考。
 - 不把模型文件、录音文件、日志文件纳入仓库。
 
 ## 验证命令
 
 ```bash
+python -m unittest discover -s tests -v
 scripts/run.sh --self-test
 python -m py_compile src/custom_key_daemon.py scripts/key-listener.py
 ```

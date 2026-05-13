@@ -47,7 +47,7 @@ docs/</code></pre></section>
   <section id="service"><h2>统一服务</h2><pre><code>systemctl --user status custom-key-daemon.service --no-pager
 systemctl --user restart custom-key-daemon.service
 journalctl --user -u custom-key-daemon.service -f</code></pre></section>
-  <section id="voice"><h2>语音输入</h2><p>按住语音键录音，松开后调用 Qwen3-ASR-GGUF 转写，并通过 <code>wtype</code> 上屏。</p><pre><code>{
+  <section id="voice"><h2>语音输入</h2><p>按住语音键录音，松开后调用 Qwen3-ASR-GGUF 转写，并通过 fcitx5 addon 或 <code>wtype</code> 上屏。</p><pre><code>{
   "voice": {
     "input_name": "keyd virtual keyboard",
     "input_device": "/dev/input/eventN",
@@ -55,6 +55,10 @@ journalctl --user -u custom-key-daemon.service -f</code></pre></section>
     "trigger_mode": "hold",
     "asr_project_dir": "&lt;ASR_PROJECT&gt;",
     "model_dir": "&lt;MODEL_DIR&gt;",
+    "output": {
+      "backend": "fcitx5",
+      "fallback": "wtype"
+    },
     "copy_to_clipboard": false
   }
 }</code></pre></section>
@@ -70,6 +74,11 @@ journalctl --user -u custom-key-daemon.service -f</code></pre></section>
   <section id="debug"><h2>调试与验证</h2><pre><code>scripts/run.sh --self-test
 scripts/key-listener.py /dev/input/&lt;eventN&gt;
 python -m py_compile src/custom_key_daemon.py scripts/key-listener.py</code></pre><p>核心决策：通过设备名解析 event，避免重启后 <code>/dev/input/eventN</code> 漂移；默认关闭 <code>wl-copy</code>，避免剪贴板阻塞上屏。</p></section>
+  <section id="fcitx5"><h2>fcitx5 addon</h2><p>可选 addon 位于 <code>contrib/fcitx5-qwen-voice/</code>，只提供 D-Bus <code>CommitText</code>，不处理录音、ASR 或按键监听。</p><pre><code>gdbus call --session \
+  --dest org.qwenvoice.Fcitx5 \
+  --object-path /qwenvoice \
+  --method org.qwenvoice.Fcitx5.CommitText \
+  'hello from qwen voice'</code></pre></section>
 </main>
 </body>
 </html>
