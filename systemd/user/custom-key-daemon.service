@@ -1,0 +1,12 @@
+[Unit]
+Description=Unified custom hardware key daemon
+After=graphical-session.target pipewire.service
+
+[Service]
+Type=simple
+ExecStart=%h/AI/CustomKeyDaemon/run.sh
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,12 @@
+[Unit]
+Description=Listen for laptop eye-care key
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/eye-key-listener
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
