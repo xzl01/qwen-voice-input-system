@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>系统更改汇总（脱敏版）</title>
+  <style>
+    :root { color-scheme: light; --paper:#f7efe0; --ink:#202726; --muted:#60706a; --accent:#087a82; --line:#d7c8ad; --code:#172126; }
+    body { margin:0; background:var(--paper); color:var(--ink); font-family:"LXGW WenKai","Noto Serif CJK SC","Source Han Serif SC",serif; line-height:1.75; }
+    main { max-width:980px; margin:0 auto; padding:48px 24px 80px; }
+    header { border:1px solid var(--line); border-radius:24px; padding:32px; background:#fff7e8; box-shadow:0 18px 42px rgba(80,55,22,.12); }
+    h1 { margin:0 0 12px; font-size:clamp(2rem,5vw,4rem); letter-spacing:-.04em; }
+    h2 { margin-top:48px; padding-top:24px; border-top:1px solid var(--line); color:var(--accent); }
+    h3 { margin-top:32px; }
+    nav { margin:28px 0; padding:18px 24px; border-left:5px solid var(--accent); background:#fffaf0; }
+    nav a { color:var(--accent); text-decoration:none; margin-right:18px; white-space:nowrap; }
+    code { font-family:"JetBrains Mono","Cascadia Mono",monospace; background:#efe2c7; padding:.12em .35em; border-radius:6px; }
+    pre { overflow:auto; background:var(--code); color:#e8f4ef; padding:18px; border-radius:16px; border:1px solid #304044; }
+    pre code { background:transparent; padding:0; }
+    .badge { display:inline-block; margin:.25rem .4rem .25rem 0; padding:.25rem .7rem; border-radius:999px; background:#dff4f2; color:#075f66; font-weight:700; }
+    @media print { body { background:white; } header, pre, nav { box-shadow:none; } nav { display:none; } main { max-width:none; padding:0; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <p class="badge">脱敏版</p><p class="badge">Qwen3-ASR</p><p class="badge">custom-key-daemon</p>
+    <h1>系统更改汇总</h1>
+    <p>本页记录本地语音输入与自定义硬件键监听相关改动。个人用户名、绝对路径、精确 input event 编号和图形会话变量已使用占位符替换。</p>
+  </header>
+  <nav>
+    <a href="#overview">总体</a>
+    <a href="#repo">仓库</a>
+    <a href="#service">服务</a>
+    <a href="#voice">语音输入</a>
+    <a href="#eye">护眼模式</a>
+    <a href="#debug">调试</a>
+  </nav>
+  <section id="overview"><h2>总体结果</h2><ul><li>建立本地 Qwen3-ASR-GGUF 语音输入方案。</li><li>将语音听写和护眼按键监听合并为 <code>custom-key-daemon.service</code>。</li><li>旧服务保留为 legacy，但默认停用。</li></ul></section>
+  <section id="repo"><h2>仓库结构</h2><pre><code>src/custom_key_daemon.py
+config/config.json
+scripts/run.sh
+scripts/key-listener.py
+systemd/user/custom-key-daemon.service
+legacy/systemd/user/
+docs/</code></pre></section>
+  <section id="service"><h2>统一服务</h2><pre><code>systemctl --user status custom-key-daemon.service --no-pager
+systemctl --user restart custom-key-daemon.service
+journalctl --user -u custom-key-daemon.service -f</code></pre></section>
+  <section id="voice"><h2>语音输入</h2><p>按住语音键录音，松开后调用 Qwen3-ASR-GGUF 转写，并通过 <code>wtype</code> 上屏。</p><pre><code>{
+  "voice": {
+    "input_name": "keyd virtual keyboard",
+    "input_device": "/dev/input/eventN",
+    "trigger_code": 193,
+    "trigger_mode": "hold",
+    "asr_project_dir": "&lt;ASR_PROJECT&gt;",
+    "model_dir": "&lt;MODEL_DIR&gt;",
+    "copy_to_clipboard": false
+  }
+}</code></pre></section>
+  <section id="eye"><h2>护眼模式</h2><p>按下护眼键后执行本地护眼切换脚本。</p><pre><code>{
+  "eye_care": {
+    "input_name": "Ideapad extra buttons",
+    "input_device": "/dev/input/eventN",
+    "trigger_code": 202,
+    "trigger_on": "press",
+    "command": "&lt;HOME&gt;/.local/bin/toggle-eye-care"
+  }
+}</code></pre></section>
+  <section id="debug"><h2>调试与验证</h2><pre><code>scripts/run.sh --self-test
+scripts/key-listener.py /dev/input/&lt;eventN&gt;
+python -m py_compile src/custom_key_daemon.py scripts/key-listener.py</code></pre><p>核心决策：通过设备名解析 event，避免重启后 <code>/dev/input/eventN</code> 漂移；默认关闭 <code>wl-copy</code>，避免剪贴板阻塞上屏。</p></section>
+</main>
+</body>
+</html>
