@@ -1,0 +1,39 @@
+{
+  "log_file": "<HOME>/.cache/custom-key-daemon/daemon.log",
+  "voice": {
+    "enabled": true,
+    "input_device": "/dev/input/event11",
+    "input_name": "keyd virtual keyboard",
+    "trigger_code": 193,
+    "trigger_name": "Lenovo voice input key / code 193",
+    "trigger_mode": "hold",
+    "recordings_dir": "<HOME>/AI/VoiceInput/recordings",
+    "asr_project_dir": "<ASR_PROJECT>",
+    "model_dir": "<MODEL_DIR>",
+    "language": "Chinese",
+    "min_record_seconds": 0.25,
+    "pw_record": {
+      "rate": 16000,
+      "channels": 1,
+      "format": "s16"
+    },
+    "type_command": "wtype",
+    "copy_to_clipboard": false,
+    "type_text": true,
+    "notify": true,
+    "notify_timeout_ms": 1200,
+    "strip_trailing_punctuation": false
+  },
+  "eye_care": {
+    "enabled": true,
+    "input_device": "/dev/input/event6",
+    "input_name": "Ideapad extra buttons",
+    "trigger_code": 202,
+    "trigger_name": "Lenovo eye-care key / code 202",
+    "trigger_on": "press",
+    "debounce_seconds": 0.8,
+    "command": "<HOME>/.local/bin/toggle-eye-care",
+    "notify": true,
+    "notify_timeout_ms": 1200
+  }
+}
