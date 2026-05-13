@@ -20,6 +20,17 @@
     "type_command": "wtype",
     "copy_to_clipboard": false,
     "type_text": true,
+    "output": {
+      "backend": "fcitx5",
+      "fallback": "wtype",
+      "wtype_command": "wtype",
+      "gdbus_command": "gdbus",
+      "fcitx5_bus_name": "org.qwenvoice.Fcitx5",
+      "fcitx5_object_path": "/qwenvoice",
+      "fcitx5_interface": "org.qwenvoice.Fcitx5",
+      "fcitx5_method": "CommitText",
+      "fcitx5_timeout_seconds": 2.0
+    },
     "notify": true,
     "notify_timeout_ms": 1200,
     "strip_trailing_punctuation": false
