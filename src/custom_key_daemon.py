@@ -48,6 +48,7 @@ class VoiceConfig:
     type_command: str
     copy_to_clipboard: bool
     type_text: bool
+    output: dict
     notify: bool
     notify_timeout_ms: int
     strip_trailing_punctuation: bool
@@ -76,9 +77,19 @@ class Config:
 
 def load_config(path: Path) -> Config:
     raw = json.loads(path.read_text(encoding="utf-8"))
+    voice_raw = raw["voice"]
+    if "output" not in voice_raw:
+        voice_raw = {
+            **voice_raw,
+            "output": {
+                "backend": "wtype" if voice_raw.get("type_text", True) else "none",
+                "fallback": "none",
+                "wtype_command": voice_raw.get("type_command", "wtype"),
+            },
+        }
     return Config(
         log_file=raw["log_file"],
-        voice=VoiceConfig(**raw["voice"]),
+        voice=VoiceConfig(**voice_raw),
         eye_care=EyeCareConfig(**raw["eye_care"]),
     )
 
@@ -271,27 +282,109 @@ class Recorder:
         return path
 
 
-def insert_text(cfg: Config, text: str) -> None:
+def copy_to_clipboard(cfg: Config, text: str) -> None:
     voice = cfg.voice
+    if not voice.copy_to_clipboard:
+        return
+    try:
+        cp = run_checked(["wl-copy"], input_text=text, timeout=2)
+        if cp.returncode != 0:
+            log(cfg, f"wl-copy failed: {cp.stderr.strip()}")
+    except subprocess.TimeoutExpired:
+        log(cfg, "wl-copy timed out; continuing without clipboard copy")
+
+
+def output_backend_name(cfg: Config) -> str:
+    return str(cfg.voice.output.get("backend", "wtype")).lower().strip()
+
+
+def output_fallback_name(cfg: Config) -> str:
+    return str(cfg.voice.output.get("fallback", "wtype")).lower().strip()
+
+
+def commit_with_wtype(cfg: Config, text: str) -> bool:
+    voice = cfg.voice
+    command = str(voice.output.get("wtype_command", voice.type_command or "wtype"))
+    try:
+        typed = run_checked([command, text], timeout=15)
+    except subprocess.TimeoutExpired:
+        log(cfg, f"{command} timed out")
+        return False
+    if typed.returncode != 0:
+        log(cfg, f"{command} failed: {typed.stderr.strip()}")
+        return False
+    log(cfg, f"Typed text with {command}: {text}")
+    return True
+
+
+def commit_with_fcitx5(cfg: Config, text: str) -> bool:
+    output = cfg.voice.output
+    gdbus = str(output.get("gdbus_command", "gdbus"))
+    bus_name = str(output.get("fcitx5_bus_name", "org.qwenvoice.Fcitx5"))
+    object_path = str(output.get("fcitx5_object_path", "/qwenvoice"))
+    interface = str(output.get("fcitx5_interface", "org.qwenvoice.Fcitx5"))
+    method = str(output.get("fcitx5_method", "CommitText"))
+    timeout = float(output.get("fcitx5_timeout_seconds", 2.0))
+    try:
+        result = run_checked(
+            [
+                gdbus,
+                "call",
+                "--session",
+                "--dest", bus_name,
+                "--object-path", object_path,
+                "--method", f"{interface}.{method}",
+                text,
+            ],
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        log(cfg, "fcitx5 commit timed out")
+        return False
+    if result.returncode != 0:
+        log(cfg, f"fcitx5 commit failed: {result.stderr.strip()}")
+        return False
+    if "false" in result.stdout.lower():
+        log(cfg, f"fcitx5 commit returned false: {result.stdout.strip()}")
+        return False
+    log(cfg, f"Committed text with fcitx5: {text}")
+    return True
+
+
+def commit_text(cfg: Config, text: str, backend: str) -> bool:
+    if backend in {"", "none", "off", "disabled"}:
+        log(cfg, "Output backend disabled; text not inserted")
+        return True
+    if backend == "wtype":
+        return commit_with_wtype(cfg, text)
+    if backend == "fcitx5":
+        return commit_with_fcitx5(cfg, text)
+    if backend == "clipboard":
+        original = cfg.voice.copy_to_clipboard
+        if original:
+            copy_to_clipboard(cfg, text)
+            return True
+        log(cfg, "clipboard backend requested but copy_to_clipboard is false")
+        return False
+    log(cfg, f"Unsupported output backend: {backend!r}")
+    return False
+
+
+def insert_text(cfg: Config, text: str) -> None:
     if not text:
         log(cfg, "Empty transcription, nothing to insert")
         return
-    if voice.copy_to_clipboard:
-        try:
-            cp = run_checked(["wl-copy"], input_text=text, timeout=2)
-            if cp.returncode != 0:
-                log(cfg, f"wl-copy failed: {cp.stderr.strip()}")
-        except subprocess.TimeoutExpired:
-            log(cfg, "wl-copy timed out; continuing without clipboard copy")
-    if voice.type_text:
-        try:
-            typed = run_checked([voice.type_command, text], timeout=15)
-            if typed.returncode != 0:
-                log(cfg, f"{voice.type_command} failed: {typed.stderr.strip()}")
-            else:
-                log(cfg, f"Typed text: {text}")
-        except subprocess.TimeoutExpired:
-            log(cfg, f"{voice.type_command} timed out")
+    copy_to_clipboard(cfg, text)
+    if not cfg.voice.type_text:
+        log(cfg, f"Copied text only: {text}")
+        return
+    backend = output_backend_name(cfg)
+    if commit_text(cfg, text, backend):
+        return
+    fallback = output_fallback_name(cfg)
+    if fallback and fallback != backend and fallback not in {"none", "off", "disabled"}:
+        log(cfg, f"Trying fallback output backend: {fallback}")
+        commit_text(cfg, text, fallback)
 
 
 def stop_transcribe_insert(recorder: Recorder, asr: QwenAsr, cfg: Config) -> None:
@@ -345,7 +438,8 @@ def self_test(cfg: Config) -> int:
             (Path(voice.asr_project_dir).exists(), f"ASR project exists: {voice.asr_project_dir}"),
             (Path(voice.model_dir).exists(), f"model dir exists: {voice.model_dir}"),
             (subprocess.call(["which", "pw-record"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0, "pw-record available"),
-            (subprocess.call(["which", voice.type_command], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0, f"{voice.type_command} available"),
+            (output_backend_name(cfg) != "wtype" or subprocess.call(["which", str(voice.output.get("wtype_command", voice.type_command))], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0, "wtype backend command available if enabled"),
+            (output_backend_name(cfg) != "fcitx5" or subprocess.call(["which", str(voice.output.get("gdbus_command", "gdbus"))], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0, "gdbus available if fcitx5 backend enabled"),
             (not voice.copy_to_clipboard or subprocess.call(["which", "wl-copy"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0, "wl-copy available if enabled"),
         ])
     if eye.enabled:
