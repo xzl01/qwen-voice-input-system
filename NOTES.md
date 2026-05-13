@@ -27,6 +27,31 @@ Transcription failed: TimeoutExpired(['wl-copy'], 5)
 "copy_to_clipboard": false
 ```
 
+## 为什么新增 fcitx5 output backend
+
+`wtype` 是合成按键输入，简单但依赖当前 Wayland/compositor 环境。fcitx5 addon 可以把转写文本直接提交到当前输入上下文，路径更接近输入法语义。
+
+当前设计保留两层：
+
+```text
+Python daemon:
+  evdev trigger -> record -> Qwen ASR -> output backend
+
+fcitx5 addon:
+  D-Bus CommitText(text) -> focusedInputContext.commitString(text)
+```
+
+这样 Python/Qwen 依赖不会进入 fcitx5 进程，fcitx5 只负责提交文字。
+
+推荐配置：
+
+```json
+"output": {
+  "backend": "fcitx5",
+  "fallback": "wtype"
+}
+```
+
 ## 资源占用
 
 Python 按键监听本身资源占用低；常驻内存主要来自启动时加载 Qwen3-ASR 模型。未来可考虑懒加载 ASR。
